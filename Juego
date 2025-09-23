@@ -1,0 +1,177 @@
+import pygame
+import threading
+import time
+
+# Inicialización de pygame
+pygame.init()
+
+# Tamaño de la ventana del juego
+ANCHO, ALTO = 800, 600
+VENTANA = pygame.display.set_mode((ANCHO, ALTO))
+pygame.display.set_caption("Videojuego con hilos")
+
+# Colores (RGB)
+NEGRO = (0, 0, 0)
+AZUL = (0, 0, 255)
+ROJO = (255, 0, 0)
+VERDE = (0, 255, 0)
+
+
+# ======================
+# Clase base: Nave
+# ======================
+class Nave:
+    def __init__(self, x, y, color):
+        # Posición inicial
+        self.x = x
+        self.y = y
+        # Tamaño estándar de la nave
+        self.ancho = 50
+        self.alto = 30
+        # Color de la nave
+        self.color = color
+        # Velocidad de movimiento
+        self.velocidad = 5
+        # Bandera para mantener vivo el hilo
+        self.viva = True
+        self.thread = None
+
+    def dibujar(self, ventana):
+        """Dibuja la nave como un rectángulo."""
+        pygame.draw.rect(ventana, self.color, (self.x, self.y, self.ancho, self.alto))
+
+    def mover(self):
+        """Método mover. Se sobrescribe en las subclases."""
+        pass
+
+    def iniciar_hilo(self):
+        """Lanza un hilo independiente que ejecuta run()."""
+        self.thread = threading.Thread(target=self.run, daemon=True)
+        self.thread.start()
+
+    def run(self):
+        """Ejecuta continuamente mover() en un hilo mientras la nave esté viva."""
+        while self.viva:
+            self.mover()
+            time.sleep(0.02)  # Controla la frecuencia de movimiento
+
+
+# ======================
+# Clase: MiNave (jugador)
+# ======================
+class MiNave(Nave):
+    def __init__(self, x, y, color):
+        super().__init__(x, y, color)
+        self.proyectiles = []       # Lista de proyectiles disparados
+        self.movimiento = None      # Dirección: "izquierda", "derecha" o None
+
+    def mover(self):
+        """Moverse según la tecla presionada por el jugador."""
+        if self.movimiento == "izquierda" and self.x > 0:
+            self.x -= self.velocidad
+        if self.movimiento == "derecha" and self.x < ANCHO - self.ancho:
+            self.x += self.velocidad
+
+    def disparar(self):
+        """Crea un proyectil y lo lanza en su propio hilo."""
+        proyectil = Proyectil(self.x + self.ancho // 2, self.y, VERDE)
+        proyectil.iniciar_hilo()
+        self.proyectiles.append(proyectil)
+
+
+# ======================
+# Clase: NaveEnemiga
+# ======================
+class NaveEnemiga(Nave):
+    def __init__(self, x, y, color):
+        super().__init__(x, y, color)
+        self.direccion = 1  # 1 = derecha, -1 = izquierda
+
+    def mover(self):
+        """Movimiento automático de lado a lado."""
+        self.x += self.velocidad * self.direccion
+        # Cambiar de dirección si llega a los bordes
+        if self.x <= 0 or self.x >= ANCHO - self.ancho:
+            self.direccion *= -1
+
+
+# ======================
+# Clase: Proyectil
+# ======================
+class Proyectil(Nave):
+    def __init__(self, x, y, color):
+        super().__init__(x, y, color)
+        # Tamaño reducido del proyectil
+        self.ancho = 5
+        self.alto = 15
+        self.velocidad = 7
+
+    def mover(self):
+        """Movimiento automático hacia arriba."""
+        self.y -= self.velocidad
+        if self.y < 0:  # Si sale de la pantalla, se elimina
+            self.viva = False
+
+
+# ======================
+# Bucle principal del juego
+# ======================
+def main():
+    run = True
+    clock = pygame.time.Clock()
+
+    # Crear las naves
+    jugador = MiNave(ANCHO // 2, ALTO - 50, AZUL)
+    enemigo1 = NaveEnemiga(100, 100, ROJO)
+    enemigo2 = NaveEnemiga(600, 200, ROJO)
+
+    # Iniciar hilos de movimiento de cada nave
+    jugador.iniciar_hilo()
+    enemigo1.iniciar_hilo()
+    enemigo2.iniciar_hilo()
+
+    while run:
+        clock.tick(60)      # FPS
+        VENTANA.fill(NEGRO)
+
+        # Manejo de eventos (teclado, salir del juego)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                run = False
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_LEFT:
+                    jugador.movimiento = "izquierda"
+                if event.key == pygame.K_RIGHT:
+                    jugador.movimiento = "derecha"
+                if event.key == pygame.K_SPACE:
+                    jugador.disparar()
+
+            if event.type == pygame.KEYUP:
+                if event.key in (pygame.K_LEFT, pygame.K_RIGHT):
+                    jugador.movimiento = None
+
+        # Dibujar jugador y enemigos
+        jugador.dibujar(VENTANA)
+        enemigo1.dibujar(VENTANA)
+        enemigo2.dibujar(VENTANA)
+
+        # Dibujar proyectiles activos
+        for proyectil in jugador.proyectiles:
+            if proyectil.viva:
+                proyectil.dibujar(VENTANA)
+            else:
+                jugador.proyectiles.remove(proyectil)
+
+        # Actualizar pantalla
+        pygame.display.update()
+
+    # Detener hilos al salir del juego
+    jugador.viva = False
+    enemigo1.viva = False
+    enemigo2.viva = False
+    pygame.quit()
+
+
+if __name__ == "__main__":
+    main()
